@@ -169,7 +169,7 @@
               <!-- small box -->
               <div class="small-box bg-green">
                 <div class="inner">
-                  <h3>44</h3>
+                  <h3 id="number-users">0</h3>
                   <p>Novos Usuários</p>
                 </div>
                 <div class="icon">
@@ -182,8 +182,7 @@
               <!-- small box -->
               <div class="small-box bg-yellow">
                 <div class="inner">
-                  <h3>15</h3>
-          
+                  <h3 id="number-users-admin">0</h3>
                   <p>Administradores</p>
                 </div>
                 <div class="icon">
@@ -210,7 +209,7 @@
                   <label>Gênero</label>
                   <div class="radio">
                     <label for="exampleInputGenderM">
-                      <input type="radio" id="exampleInputGenderM" name="gender" value="M">
+                      <input type="radio" id="exampleInputGenderM" name="gender" value="M" checked>
                       Masculino</label>
                   </div>
                   <div class="radio">
@@ -514,6 +513,9 @@
   </footer>
 
 </div>
+<script src="classes/Utils.js"></script>
+<script src="models/User.js"></script>
+<script src="controllers/UserController.js"></script>
 <script src="index.js"></script>
 </script>
 </body>
