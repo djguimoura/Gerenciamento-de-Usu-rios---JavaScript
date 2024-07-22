@@ -2,13 +2,15 @@
 class UserController {
     //"constructor" com a estrutura do formulário
     constructor(formIdCreate, formIdUpdate, tableId){
-        this.formEl = document.getElementById(formIdCreate);
+        this.formCreateEl = document.getElementById(formIdCreate);
         this.formUpdateEl = document.getElementById(formIdUpdate);
         this.tableEl = document.getElementById(tableId);
-        this.btnSubmit = this.formEl.querySelector('[type=submit]');
+        this.btnSubmit = this.formCreateEl.querySelector('[type=submit]');
         this.btnUpdate = this.formUpdateEl.querySelector('[type=submit]');
         this.onSubmit();
         this.onEdit();
+        //chamando o método para carregar no sessionStorage caso contenha dados armazenados na sessão
+        this.selectAll();
     }
 
     onEdit(){
@@ -22,50 +24,68 @@ class UserController {
 
             //capturando os dados preenchidos no form de update para atulizar no grid            
             let values = this.getValues(this.formUpdateEl);
+
             //identificando o index do objeto/linha do grid que está sendo trabalhado
             //"dataset" é utilizado para armazenar dados diretamente nos elementos HTML e manipulá-los em js
             let index = this.formUpdateEl.dataset.trIndex;
             let tr = this.tableEl.rows[index];
 
+            //capturando value antigo do objeto user
+            let userOld = JSON.parse(tr.dataset.user);
+            
+            //utilizando o Object.assign() para copiar o valor de atributos do objeto, criando um obj destino e retornando este objeto
+            //os objetos que estão à direita no parâmetro substitui os objetos da esqueda
+            let result = Object.assign({}, userOld, values);
+
             //console.log(values);
 
-            tr.dataset.user = JSON.stringify(values);
-            tr.innerHTML = `
-            <tr>
-                <td><img src="${values.photo}" alt="User Image" class="img-circle img-sm"></td>
-                <td>${values.name}</td>
-                <td>${values.email}</td>
-                <td>${(values.admin) ? 'Sim' : 'Não'}</td>
-                <td>${values.register}</td>
-                <td>
-                    <button type="button" class="btn btn-primary btn-edit btn-xs btn-flat">Editar</button>
-                    <button type="button" class="btn btn-danger btn-xs btn-flat">Excluir</button>
-                </td>
-            </tr>
-            `;
+            this.getPhoto(this.formUpdateEl).then((content) => {
+                //se não houver alteração na foto, mantém a foto existente
+                if(!values.photo){
+                    result._photo = userOld._photo;
+                } else {
+                    //caputurando o novo value/content da photo a ser atualizada
+                    result._photo = content;
+                }
 
-            this.btnUpdate.disabled = false;
-            this.addEventsTr(tr);
-            this.updateCount();
-            this.showPanelCreate();
+                //instanciando novo user
+                let user = new User();
+                //para carregar os dados do objeto em 'user' através do parâmetro 'result'
+                user.loadFromJSON(result);
+
+                //salvando os novos dados via localStorage mapeado pelo método 'save()'
+                user.save();               
+            
+                //chamando o método 'getTr()' com segundo parâmetro devido a tr já existir e ele precisar ser informda
+                this.getTr(user, tr);    
+                this.updateCount();
+                this.btnUpdate.disabled = false;
+                this.formUpdateEl.reset();
+                this.showPanelCreate();
+            }, (e) =>{
+                    console.error(e);
+                }
+            );
         });
     }
 
     onSubmit(){
-        this.formEl.addEventListener('submit', event => {
+        this.formCreateEl.addEventListener('submit', event => {
             //cancela a ação do evento nativo do JS
             event.preventDefault();
             this.btnSubmit.disabled = true;
             
-            let values = this.getValues(this.formEl);
+            let values = this.getValues(this.formCreateEl);
 
             //Para tratar o envio da foto em caso do campo ficar vazio, caso seja vazio, retorna 'false' e para a execução
             if(!values) return false;
 
-            this.getPhoto().then((content) => {
+            this.getPhoto(this.formCreateEl).then((content) => {
                 values.photo = content;
+                //salvando os dados via localStorage mapeado pelo método 'save()'
+                values.save();
                 this.addLine(values);
-                this.formEl.reset();
+                this.formCreateEl.reset();
                 this.btnSubmit.disabled = false;
             }, (e) =>{
                     console.error(e);
@@ -74,10 +94,10 @@ class UserController {
         });
     }
 
-    getPhoto(){
+    getPhoto(formCreateEl){
         return new Promise((resolve, reject) => {
             let fileReader = new FileReader();
-            let elements = [...this.formEl.elements].filter(item=>{//verificando se o elemento é o input de arquivo
+            let elements = [...formCreateEl.elements].filter(item=>{//verificando se o elemento é o input de arquivo
                 if(item.name === 'photo'){
                     return item;
                 }
@@ -98,12 +118,13 @@ class UserController {
         });
     }
 
-    getValues(formEl){
+    getValues(formCreateEl){
         let user = {};
         let isValid = true;
         //fields.forEach(function(field, index){
         //usando o recurso "spread" para forçar a function "forEach" entender que os elementos se tratam de um array, então encapsula dentro dos colchetes e utiliza-se o reticências
-        [...formEl.elements].forEach((field, index) => { //arrow function
+        [...formCreateEl.elements].forEach((field, index) => { //arrow function
+            //validando campos obrigatórios/required
             if(['name','email','password'].indexOf(field.name) > -1 && !field.value){
                 field.parentElement.classList.add('has-error');
                 isValid = false;
@@ -136,10 +157,35 @@ class UserController {
         );
     }
 
+    selectAll(){
+        //método 'getUserStorage()' sendo carregado da classe 'User.js' (método estático)
+        let users = User.getUserStorage();
+
+        users.forEach(dataUser =>{
+            //instanciando um novo user para funcionar dentro do método 'addLine()'
+            let user = new User();
+
+            //carregando o objeto user a partir de um JSON
+            user.loadFromJSON(dataUser);
+            this.addLine(user);
+        });
+    }
+
     addLine(dataUser){ 
-        let tr = document.createElement('tr');
-        //converte o objeto que retorna como string para formato JSON (serialzação)
-        tr.dataset.user = JSON.stringify(dataUser); 
+        //não utilizando o segundo parâmetro pois será uma tr nova (null)
+        //var para guardar (getTr) a linha da tr do user
+        let tr = this.getTr(dataUser);   
+        this.tableEl.appendChild(tr);
+        this.updateCount();
+    }
+
+    //método para selecionar a tr que será gerada e segundo parâmetro é opcional, se não for passado, será null
+    getTr(dataUser, tr = null){
+        //se tr === null cria um novo elemento/linha
+        if(tr === null) tr = document.createElement('tr');
+
+        //stringify converte um object json em string
+        tr.dataset.user = JSON.stringify(dataUser);
 
         tr.innerHTML = `
         <tr>
@@ -150,32 +196,46 @@ class UserController {
             <td>${dataUser.register}</td>
             <td>
                 <button type="button" class="btn btn-primary btn-edit btn-xs btn-flat">Editar</button>
-                <button type="button" class="btn btn-danger btn-xs btn-flat">Excluir</button>
+                <button type="button" class="btn btn-danger btn-delete btn-xs btn-flat">Excluir</button>
             </td>
         </tr>
         `;
 
         this.addEventsTr(tr);
-        this.tableEl.appendChild(tr);
-        this.updateCount();
+        return tr;
     }
 
     //Outras maneiras de formatar a data, e com a classe Utils.js trabalhando com o método criado "dateFormat" para formatar de acordo com a necessidade
     //<td>${Utils.dateFormat(dataUser.register)}</td>
     //<td>${new Date(dataUser.birth).toLocaleDateString('pt-BR')}</td>
 
+    //método para manipular eventos da linha(tr)
     addEventsTr(tr){
+        tr.querySelector(".btn-delete").addEventListener("click", e=> {
+            //event 'confirm' abre um alert de confirmação com ok e cancelar
+            if (confirm("Deseja realmente excluir esse registro?")){
+                //removendo a linha (tr)
+                tr.remove();
+
+                //instanciando o user para manipular a exclusão do dado
+                let user = new User();
+                user.loadFromJSON(JSON.parse(tr.dataset.user));
+                user.delete();
+
+                this.updateCount();
+            }
+        });
+
         tr.querySelector(".btn-edit").addEventListener("click", e=> {
             let json = JSON.parse(tr.dataset.user);
-            let form = document.querySelector("#form-user-update");
 
             //capturando os index do grid
-            form.dataset.trIndex = tr.sectionRowIndex;
+            this.formUpdateEl.dataset.trIndex = tr.sectionRowIndex;
             
             //laço para percorrer objetos do grid para serem enviados ao form de 'update'
             for (let name in json){
                 //replace para trocar o _ do nome do objeto
-                let field = form.querySelector(`[name="${name.replace("_","")}"]`);
+                let field = this.formUpdateEl.querySelector(`[name="${name.replace("_","")}"]`);
 
                 //se campo for diferente de vazio entra no bloco
                 if (field){
@@ -186,7 +246,7 @@ class UserController {
 
                         case "radio":
                             //validando o type checked (M ou F) do gender
-                            field = form.querySelector(`[name="${name.replace("_","")}"][value="${json[name]}"]`);
+                            field = this.formUpdateEl.querySelector(`[name="${name.replace("_","")}"][value="${json[name]}"]`);
                             field.checked = true;
                         break;
 
@@ -200,6 +260,9 @@ class UserController {
                     }
                 }
             }
+
+            //através da captura do elemento da tag img, inputa o value da nova foto (pagando do objeto/json)
+            this.formUpdateEl.querySelector(".photo").src = json._photo;
             this.showPanelUpdate();
         });
     }
